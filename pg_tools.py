@@ -4,6 +4,7 @@ import psycopg2
 from typing import Optional
 from langchain.tools import tool
 from pydantic import BaseModel, Field
+from datetime import datetime
 
 load_dotenv()
 
@@ -25,10 +26,22 @@ class AddTransactionArgs(BaseModel):
     type_id: Optional[int] = Field(default=None, description="ID em transaction_types (1=INCOME, 2=EXPENSES, 3=TRANSFER).")
     type_name: Optional[str] = Field(default=None, description="Nome do tipo: INCOME | EXPENSES | TRANSFER.")
     category_id: Optional[int] = Field(default=12, description="FK de categories (opcional). (1=comida, 2=besteira, 5=transporte, 6=moradia, 7= saúde, 8=lazer)")
+
     category_name: Optional[str] = Field(default=None, description="Nome da categoria (opcional e para e gerenciamento de gastos e entradas). (As opções disponíveis são: comida, besteira, transporte, moradia, saúde, lazer).")
+
     description: Optional[str] = Field(default=None, description="Descrição (opcional).")
     payment_method: Optional[str] = Field(default=None, description="Forma de pagamento (opcional).")
 
+class QueryTransactionArgs(BaseModel):
+    text: str = Field(..., description="Filtro por texto (description/source_text), datas, locais, categorias de gasto.")
+    start_date: Optional[datetime]= Field(default=None, description='Data inicial para filtro por data (opcional).')
+    end_date: Optional[datetime] = Field(default=None, description='Data final para filtro por data (opcional).')
+    category_id: Optional[int] = Field(default=12, description="FK de categories (opcional). (1=comida, 2=besteira, 5=transporte, 6=moradia, 7= saúde, 8=lazer)")
+
+    category_name: Optional[str] = Field(default=None, description="Nome da categoria (opcional e para e gerenciamento de gastos e entradas). (As opções disponíveis são: comida, besteira, transporte, moradia, saúde, lazer).")
+
+    type_id: Optional[int] = Field(default=None, description="ID em transaction_types (1=INCOME, 2=EXPENSES, 3=TRANSFER).")
+    type_name: Optional[str] = Field(default=None, description="Nome do tipo: INCOME | EXPENSES | TRANSFER.")
 
 #Garante que o campo type da tabela transactions receba um id válido (1=INCOME, 2=EXPENSES, 3=TRANSFER    
 TYPE_ALIASES = {
@@ -121,6 +134,48 @@ def add_transaction(
         except Exception:
             pass
 
+@tool('search-transactions', args_schema=QueryTransactionArgs)
+def search_transactions(
+    text: str,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    category_id: Optional[int] = None,
+    category_name: Optional[str] = None,
+    type_id: Optional[int] = None,
+    type_name: Optional[str] = None,
+) -> dict:
+    """Consulta transações com filtros por texto (source_text/description), tipo e datas locais (America/Sao_Paulo).
+    Os dados devem vir na seguinte ordem:
+    
+    Intervalo (date_from_local/date_to_local): ASC (cronológico).
+    
+    Caso contrário: DESC (mais recentes primeiro)."""
+
+    conn = get_conn()
+    cur = conn.cursor()
+
+    conditions = []
+    params = []
+
+    if text:
+        conditions.append("(source_text ~* %s OR description ~* %s)")
+        params.extend([text, text])
+
+    if start_date and end_date:
+        conditions.append("date_local BETWEEN %s AND %s")
+        params.extend([start_date, end_date])
+        order_by = "ASC"
+    else:
+        order_by = "DESC"
+
+    query = "SELECT * FROM transactions"
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    query += f" ORDER BY occurred_at {order_by}"
+
+    cur.execute(query, params)
 
 # Exporta a lista de tools
-TOOLS = [add_transaction]
+TOOLS = [add_transaction, search_transactions]
