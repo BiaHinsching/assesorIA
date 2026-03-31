@@ -36,7 +36,7 @@ class QueryTransactionArgs(BaseModel):
     text: str = Field(..., description="Filtro por texto (description/source_text), datas, locais, categorias de gasto.")
     start_date: Optional[datetime]= Field(default=None, description='Data inicial para filtro por data (opcional).')
     end_date: Optional[datetime] = Field(default=None, description='Data final para filtro por data (opcional).')
-    category_id: Optional[int] = Field(default=12, description="FK de categories (opcional). (1=comida, 2=besteira, 5=transporte, 6=moradia, 7= saúde, 8=lazer)")
+    category_id: Optional[int] = Field(default=None, description="FK de categories (opcional). (1=comida, 2=besteira, 5=transporte, 6=moradia, 7= saúde, 8=lazer)")
 
     category_name: Optional[str] = Field(default=None, description="Nome da categoria (opcional e para e gerenciamento de gastos e entradas). (As opções disponíveis são: comida, besteira, transporte, moradia, saúde, lazer).")
 
@@ -154,28 +154,53 @@ def search_transactions(
     conn = get_conn()
     cur = conn.cursor()
 
-    conditions = []
-    params = []
+    try:
+        conditions = []
+        params = []
 
-    if text:
-        conditions.append("(source_text ~* %s OR description ~* %s)")
-        params.extend([text, text])
+        if text:
+            conditions.append("(source_text ~* %s OR description ~* %s)")
+            params.extend([text, text])
 
-    if start_date and end_date:
-        conditions.append("date_local BETWEEN %s AND %s")
-        params.extend([start_date, end_date])
-        order_by = "ASC"
-    else:
-        order_by = "DESC"
+        if start_date and end_date:
+            conditions.append("occurred_at BETWEEN %s AND %s")
+            params.extend([start_date, end_date])
+            order_by = "ASC"
+        else:
+            order_by = "DESC"
 
-    query = "SELECT * FROM transactions"
+        if category_id is not None or category_name is not None:
+            resolved_category_id = _resolve_category_id(cur, category_id, category_name)
+            if resolved_category_id:
+                conditions.append("category_id = %s")
+                params.append(resolved_category_id)
 
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
+        if type_id is not None or type_name is not None:
+            resolved_type_id = _resolve_type_id(cur, type_id, type_name)
+            if resolved_type_id:
+                conditions.append("type = %s")
+                params.append(resolved_type_id)
 
-    query += f" ORDER BY occurred_at {order_by}"
+        query = "SELECT * FROM transactions"
 
-    cur.execute(query, params)
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += f" ORDER BY occurred_at {order_by}"
+
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        columns = [desc[0] for desc in cur.description]
+        return {"status": "ok", "results": [dict(zip(columns, row)) for row in rows]}
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        try:
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
 
 # Exporta a lista de tools
 TOOLS = [add_transaction, search_transactions]
