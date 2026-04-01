@@ -229,6 +229,33 @@ def saldo_total() -> dict:
     finally:
         cur.close()
         conn.close()
+
+@tool('saldo_diario')
+def saldo_diario(date_local: str) -> dict:
+    """
+    Retorna o saldo (INCOME - EXPENSES) do dia local informado (YYYY-MM-DD) em America/Sao_Paulo.
+    Ignora TRANSFER (type=3).
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    query = """
+        SELECT SUM(CASE WHEN type = 1 THEN amount WHEN type = 2 THEN -amount ELSE 0 END)
+        FROM transactions
+        WHERE occurred_at::date = %s
+    """
+
+    try:
+        cur.execute(query, (date_local,))
+        resultado = cur.fetchone()[0]
+        saldo = float(resultado) if resultado else 0.0
         
+        return {"status": "ok", "saldo": saldo}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        cur.close()
+        conn.close()
+
 # Exporta a lista de tools
-TOOLS = [add_transaction, search_transactions, saldo_total]
+TOOLS = [add_transaction, search_transactions, saldo_total, saldo_diario]
