@@ -202,5 +202,33 @@ def search_transactions(
         except Exception:
             pass
 
+@tool('saldo_total')
+def saldo_total() -> dict:
+    """Calcula o saldo total (INCOME - EXPENSES) em todo o histórico (ignora TRANSFER - ID 3)."""
+    conn = get_conn()
+    cur = conn.cursor()
+
+    try:
+        query = """
+            SELECT 
+                SUM(CASE WHEN type = 1 THEN amount ELSE 0 END) - 
+                SUM(CASE WHEN type = 2 THEN amount ELSE 0 END) FROM transactions
+        """
+        
+        cur.execute(query)
+        result = cur.fetchone()
+        saldo = result[0] if result[0] is not None else 0.0
+
+        return {
+            "status": "ok", 
+            "total_balance": float(saldo)
+        }
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+    finally:
+        cur.close()
+        conn.close()
+        
 # Exporta a lista de tools
-TOOLS = [add_transaction, search_transactions]
+TOOLS = [add_transaction, search_transactions, saldo_total]
