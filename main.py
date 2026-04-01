@@ -162,7 +162,7 @@ SYSTEM_PROMPT_COMPLETO = (
 
 checkpointer = MemorySaver()
 app = create_agent(
-  model=llm_groq,
+  model=llm,
   tools=TOOLS,
   system_prompt=SYSTEM_PROMPT_COMPLETO,
   checkpointer=checkpointer,
