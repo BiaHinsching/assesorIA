@@ -1,0 +1,16 @@
+db.clientes.aggregate(
+      {$group:{_id:"$status_civil", "quantidade":{$count:{}}}}
+)
+
+db.contas.aggregate(
+      [{$group:{_id:"$tipo", "saldo_total": {$sum:"$valor"}}}, {$sort:{"saldo_total":-1}}]
+)
+
+db.contas.aggregate(
+      [{$group: {_id:"$agencia", "quantidade": {$count:{}}}}, {$sort:{"quantidade":-1}}, {$limit:1}]
+)
+
+db.contas.aggregate(
+      {$match: {"valor": {$gt: 8500}}},
+      {$group: {_id: "$tipo", "quantidade": {$count:{}}}}
+)
