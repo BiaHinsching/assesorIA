@@ -3,6 +3,7 @@ from langchain_groq import ChatGroq
 from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
 from pg_tools import TOOLS
+from faq_tools import FAQ_TOOLS
 
 import os
 from datetime import datetime
@@ -61,6 +62,7 @@ orquestrador_app = create_agent(
 
 faq_app = create_agent(
   model = llm_rapido,
+  tools= FAQ_TOOLS,
   system_prompt=FAQ_PROMPT_COMPLETO
 )
 
@@ -114,6 +116,10 @@ def rotear_conversa(pergunta: str, session_id: str) -> str:
         )
     elif rota == "AGENDA":
         resultado_especialista = agenda_app.invoke(
+            {"messages": [{"role": "human", "content": pergunta}]}
+        )
+    elif rota == "FAQ":
+        resultado_especialista = faq_app.invoke(
             {"messages": [{"role": "human", "content": pergunta}]}
         )
     else:
