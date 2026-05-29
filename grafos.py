@@ -1,7 +1,7 @@
 import operator
 from typing import Annotated, TypedDict
 from dotenv import load_dotenv
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, MessagesState, END
 
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -75,13 +75,9 @@ faq_app = create_agent(
 # ==============================================================================
 # ESTADO
 # ==============================================================================
-class Estado(TypedDict):
-    input:              str                                  # sobrescrito a cada etapa
-    session_id:         str                                  # ID da sessão
+class Estado(MessagesState):                                  # ID da sessão
     agentes_chamados:   Annotated[list[str], operator.add]  # acumula entre nós
-    saida_especialista: str                                  # JSON do especialista ativo
-    resposta_final:     str                                  # resposta para o usuário
-
+    rota: str
 
 # ==============================================================================
 # NÓS
@@ -105,41 +101,6 @@ def no_roteador(estado: Estado) -> dict:
         "input":            texto,
         "agentes_chamados": ["roteador"],
     }
-
-
-def no_financeiro(estado: Estado) -> dict:
-    saida = financeiro_app.invoke(
-        {"messages": [{"role": "human", "content": estado["input"]}]},
-        config={"configurable": {"thread_id": {estado['session_id']}}},
-    )
-    return {
-        "saida_especialista": saida["messages"][-1].text,
-        "agentes_chamados":   ["financeiro"],
-    }
-
-
-def no_agenda(estado: Estado) -> dict:
-    saida = agenda_app.invoke(
-        {"messages": [{"role": "human", "content": estado["input"]}]},
-        config={"configurable": {"thread_id": {estado['session_id']}}},
-    )
-    return {
-        "saida_especialista": saida["messages"][-1].text,
-        "agentes_chamados":   ["agenda"],
-    }
-
-
-def no_faq(estado: Estado) -> dict:
-    saida = faq_app.invoke(
-        {"messages": [{"role": "human", "content": estado["input"]}]},
-        config={"configurable": {"thread_id": {estado['session_id']}}},
-    )
-    return {
-        "saida_especialista": saida["messages"][-1].text,
-        "resposta_final":     saida["messages"][-1].text,  # bypassa o orquestrador
-        "agentes_chamados":   ["faq"],
-    }
-
 
 def no_orquestrador(estado: Estado) -> dict:
     saida = orquestrador_app.invoke(
@@ -172,9 +133,9 @@ def decidir_especialista(estado: Estado) -> str:
 grafo = StateGraph(Estado)
 
 grafo.add_node("roteador",     no_roteador)
-grafo.add_node("financeiro",   no_financeiro)
-grafo.add_node("agenda",       no_agenda)
-grafo.add_node("faq",          no_faq)
+grafo.add_node("financeiro",   financeiro_app)
+grafo.add_node("agenda",       agenda_app)
+grafo.add_node("faq",          faq_app)
 grafo.add_node("orquestrador", no_orquestrador)
 
 grafo.set_entry_point("roteador")
@@ -205,11 +166,9 @@ fluxo_agentes = grafo.compile(checkpointer=memory)
 # ==============================================================================
 def executar_fluxo_assessor(pergunta_usuario: str, session_id: str) -> str:
     estado_inicial = {
-        "input":              pergunta_usuario,
-        "session_id":         session_id,
+        "messages": [{"role": "human", "content": pergunta_usuario}],
         "agentes_chamados":   [],
-        "saida_especialista": "",
-        "resposta_final":     "",
+        "rota": "",
     }
 
     estado_final = fluxo_agentes.invoke(
