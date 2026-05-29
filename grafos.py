@@ -83,35 +83,41 @@ class Estado(MessagesState):                                  # ID da sessão
 # NÓS
 # ==============================================================================
 def no_roteador(estado: Estado) -> dict:
-    saida = router_app.invoke(
-        {"messages": [{"role": "human", "content": estado["input"]}]},
-        config={"configurable": {"thread_id": estado["session_id"]}},
-    )
+    saida = router_app.invoke({"messages": list(estado["messages"])})
     texto = saida["messages"][-1].text
 
-    # Resposta direta (saudação, fora de escopo): já escreve no campo final
-    if not texto.strip().startswith("ROUTE="):
+    if "ROUTE=" not in texto:
         return {
             "agentes_chamados": ["roteador"],
-            "resposta_final":   texto,
+            "rota": "fim",
+            "messages": {}
         }
-
-    # Encaminhamento: sobrescreve input com o protocolo para o especialista
+    rota = "fim"
+    for linha in texto.splitlines():
+        if linha.startswith("ROUTE="):
+            rota = linha.split("=", 1)[1].strip()
+            break
+        
     return {
-        "input":            texto,
-        "agentes_chamados": ["roteador"],
+        "agentes_chamados": ["roteador", rota],
+        "rota": rota,
     }
 
 def no_orquestrador(estado: Estado) -> dict:
-    saida = orquestrador_app.invoke(
-        {"messages": [{"role": "human", "content": estado["saida_especialista"]}]},
-        config={"configurable": {"thread_id": {estado['session_id']}}},
-    )
+    ultima_especialiasta = ""
+    for mensagem in reversed(estado["messages"]):
+        if mensagem.type == "ai" and mensagem.content:
+            ultima_especialiasta = mensagem.content
+            break
+        
+    saida = orquestrador_app.invoke({
+        "messages": estado["messages"][-1],
+    })
+    
     return {
-        "resposta_final":   saida["messages"][-1].text,
         "agentes_chamados": ["orquestrador"],
+        "messages": [{"role": "assistant", "content": saida["messages"][-1].text}],
     }
-
 
 # ==============================================================================
 # FUNÇÃO DE DECISÃO
