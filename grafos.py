@@ -18,6 +18,9 @@ from prompts import (
     FAQ_PROMPT_COMPLETO,
 )
 
+from guardrail import guardrail_entrada, guardrail_saida, anonimizar_entrada, desanonimizar_saida
+from langchain_core.messages import RemoveMessage
+
 load_dotenv()
 
 # ==============================================================================
@@ -78,6 +81,7 @@ faq_app = create_agent(
 class Estado(MessagesState):                                  # ID da sessão
     agentes_chamados:   Annotated[list[str], operator.add]  # acumula entre nós
     rota: str
+    mapa_pii: dict
 
 # ==============================================================================
 # NÓS
@@ -143,8 +147,16 @@ grafo.add_node("financeiro",   financeiro_app)
 grafo.add_node("agenda",       agenda_app)
 grafo.add_node("faq",          faq_app)
 grafo.add_node("orquestrador", no_orquestrador)
+grafo.add_node("guardrail_entrada", no_guardrail_entrada)
+grafo.add_node("guardrail_saida", no_guardrail_saida)
 
-grafo.set_entry_point("roteador")
+grafo.set_entry_point("guardrail_entrada")
+
+grafo.add_conditional_edges("guardrail_entrada", decidir_pos_guardrail_entrada, {
+    "roteador":"roteador",
+    "fim": END
+    }
+)
 
 grafo.add_conditional_edges(
     "roteador",
@@ -159,7 +171,8 @@ grafo.add_conditional_edges(
 
 grafo.add_edge("financeiro",   "orquestrador")
 grafo.add_edge("agenda",       "orquestrador")
-grafo.add_edge("orquestrador", END)
+grafo.add_edge("orquestrador", "guardrail_saida")
+grafo.add_edge("guardrail_saida", END)
 grafo.add_edge("faq",          END)   # FAQ bypassa o orquestrador
 
 # Memória centralizada no grafo — persiste o Estado inteiro entre turns
@@ -175,6 +188,7 @@ def executar_fluxo_assessor(pergunta_usuario: str, session_id: str) -> str:
         "messages": [{"role": "human", "content": pergunta_usuario}],
         "agentes_chamados":   [],
         "rota": "",
+        "mapa_pii": {},
     }
 
     estado_final = fluxo_agentes.invoke(
