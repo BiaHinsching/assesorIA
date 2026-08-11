@@ -1,3 +1,8 @@
+from app.config import validar_config    
+
+for _problema in validar_config():
+    print(f"[config] ATENÇÃO: {_problema}")
+
 from fastapi import FastAPI
 from app.routes.chat import router as chat_router
 app = FastAPI(
@@ -7,7 +12,11 @@ app = FastAPI(
 )
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+def health() -> dict:
+    problemas = validar_config()
+    return {
+        "status": "ok" if not problemas else "atencao",
+        "problemas_de_configuracao": problemas,
+    }
 
 app.include_router(chat_router)
