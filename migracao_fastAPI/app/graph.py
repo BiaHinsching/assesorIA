@@ -1,13 +1,10 @@
 import operator
 from typing import Annotated, TypedDict
-from dotenv import load_dotenv
 from langgraph.graph import StateGraph, MessagesState, END
 
-import os
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import create_agent
-from langchain_groq import ChatGroq
 from langgraph.checkpoint.memory import MemorySaver
+from app.llm import llm_especialista, llm_rapido
 from app.tools.financeiro import TOOLS
 from app.tools.faq import faq_retriever
 from app.prompts import (
@@ -21,32 +18,9 @@ from app.prompts import (
 from app.guardrail import guardrail_entrada, guardrail_saida, anonimizar_entrada, desanonimizar_saida
 from langchain_core.messages import RemoveMessage
 
-load_dotenv()
-
 # ==============================================================================
-# MODELOS E AGENTES  (sem checkpointer — a memória fica no grafo)
+# AGENTES  (sem checkpointer — a memória fica no grafo)
 # ==============================================================================
-llm_gemini = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    temperature=0.7,
-    top_p=0.95,
-    api_key=os.getenv("GEMINI_API_KEY"),
-)
-
-llm_groq = ChatGroq(
-    model="openai/gpt-oss-120b",
-    temperature=0.7,
-    api_key=os.getenv("GROQ_API_KEY"),
-)
-
-llm_especialista = llm_gemini.with_fallbacks([llm_groq])
-
-llm_rapido = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    temperature=0.0,
-    api_key=os.getenv("GROQ_API_KEY"),
-)
-
 router_app = create_agent(
     model=llm_rapido,
     system_prompt=ROUTER_PROMPT_COMPLETO,

@@ -1,3 +1,11 @@
+from pymongo import MongoClient
+
+from app.config import MONGODB_URI, MONGODB_DB_NAME
+
+_client = MongoClient(MONGODB_URI)
+col_sessoes = _client[MONGODB_DB_NAME]["sessoes"]
+
+
 def recuperar_historico(session_id: str, busca: str = "", limite: int = 3) -> list[dict]:
     """
     Recupera resumos de sessões ANTERIORES (já encerradas) de um usuário.
