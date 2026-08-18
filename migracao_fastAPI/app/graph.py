@@ -22,7 +22,7 @@ from langchain_core.messages import RemoveMessage
 # AGENTES  (sem checkpointer — a memória fica no grafo)
 # ==============================================================================
 router_app = create_agent(
-    model=llm_rapido,
+    model=llm_especialista,
     system_prompt=ROUTER_PROMPT_COMPLETO,
 )
 
