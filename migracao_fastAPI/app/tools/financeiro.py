@@ -1,18 +1,9 @@
-import os
-from dotenv import load_dotenv
-import psycopg2
 from typing import List, Optional
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 from datetime import datetime
 
-load_dotenv()
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-
-def get_conn():
-    return psycopg2.connect(DATABASE_URL)
+from app.db import get_conn
 
 
 # Essa classe garante que o objeto de Python passe todos esses campos

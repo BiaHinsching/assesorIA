@@ -185,7 +185,7 @@ fluxo_agentes = grafo.compile(checkpointer=memory)
 # ==============================================================================
 # FLUXO PRINCIPAL
 # ==============================================================================
-def executar_fluxo_assessor(pergunta_usuario: str, session_id: str) -> str:
+def executar_fluxo_assessor(pergunta_usuario: str, session_id: str) -> dict:
     estado_inicial = {
         "messages": [{"role": "human", "content": pergunta_usuario}],
         "agentes_chamados":   [],
@@ -198,26 +198,7 @@ def executar_fluxo_assessor(pergunta_usuario: str, session_id: str) -> str:
         config={"configurable": {"thread_id": session_id}},
     )
 
-    print(f"[debug] agentes chamados: {estado_final['agentes_chamados']}")
-    return estado_final["messages"][-1].content
-
-
-# ==============================================================================
-# LOOP DE CONVERSA
-# ==============================================================================
-while True:
-    try:
-        user_input = input("> ")
-        if user_input.lower() in ("sair", "end", "fim", "tchau", "bye"):
-            print("Encerrando a conversa.")
-            break
-
-        resposta = executar_fluxo_assessor(
-            pergunta_usuario=user_input,
-            session_id="id_usuario_mas_agora_não_importa",
-        )
-        print(resposta)
-
-    except Exception as e:
-        print("Erro ao consumir a API:", e)
-        continue
+    return {
+        "resposta": estado_final["messages"][-1].content,
+        "agentes_chamados": estado_final["agentes_chamados"],
+    }
