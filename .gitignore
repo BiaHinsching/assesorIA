@@ -5,3 +5,4 @@ __pycache__
 chat.py
 client.py
 framework.py
+.venv-win

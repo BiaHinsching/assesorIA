@@ -35,3 +35,15 @@ llm_rapido = ChatGroq(
     temperature=0.0,
     api_key=GROQ_API_KEY,
 )
+
+# O roteador usa o 120b, e não o llm_rapido, por um motivo medido: o gpt-oss-20b
+# vaza o próprio canal de raciocínio na saída quando tem tools ligadas e a
+# conversa já tem histórico. O sintoma são erros 400 do Groq com o token
+# <|channel|>commentary dentro do NOME da função, ou o raciocínio cru no lugar
+# da resposta ("User wants to economize on furniture. That's finance.").
+# Num teste de 3 turnos: 2 falhas com o 20b, 0 com o 120b.
+#
+# Não é o llm_especialista (Gemini) porque cada roteamento consumiria uma das
+# 20 requisições diárias da cota gratuita — e roteamento acontece em TODA
+# mensagem. O 120b usa a mesma chave Groq do resto.
+llm_roteador = llm_groq
