@@ -1,9 +1,10 @@
-from app.config import validar_config    
+from app.config import FRONTEND_DIR, validar_config
 
 for _problema in validar_config():
     print(f"[config] ATENÇÃO: {_problema}")
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.routes.chat import router as chat_router
 app = FastAPI(
     title = "AssesorIA",
@@ -20,3 +21,12 @@ def health() -> dict:
     }
 
 app.include_router(chat_router)
+
+if (FRONTEND_DIR / "index.html").exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+else:
+    @app.get("/", tags =["infra"])
+    def raiz() -> dict:
+        return {
+            "mensagem": "API do Assessor no ar. O frotend ainda não foi criado"
+        }
