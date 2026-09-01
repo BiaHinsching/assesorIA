@@ -33,6 +33,19 @@ const hint = document.getElementById("hint");
 // Sessão
 // ============================================================
 const SESSION_STORAGE_KEY = "assistente_session_id";
+const USER_STORAGE_KEY = "assistente_user_id";
+
+// O user_id identifica a PESSOA e é estável entre sessões — é o que faz a
+// memória de longo prazo (buscar_historico) achar conversas antigas. Diferente
+// do session_id, ele NÃO é trocado no botão "nova sessão".
+function obterOuCriarUserId() {
+  let id = localStorage.getItem(USER_STORAGE_KEY);
+  if (!id) {
+    id = "user-" + gerarSessionId();
+    localStorage.setItem(USER_STORAGE_KEY, id);
+  }
+  return id;
+}
 
 function gerarSessionId() {
   if (window.crypto && crypto.randomUUID) {
@@ -106,6 +119,7 @@ function exibirSessionId(id) {
 }
 
 let sessionId = obterOuCriarSessionId();
+const userId = obterOuCriarUserId();
 exibirSessionId(sessionId);
 
 resetButton.addEventListener("click", iniciarNovaSessao);
@@ -229,6 +243,7 @@ composer.addEventListener("submit", async (evento) => {
       body: JSON.stringify({
         pergunta: pergunta,
         session_id: sessionId,
+        user_id: userId,
       }),
     });
 

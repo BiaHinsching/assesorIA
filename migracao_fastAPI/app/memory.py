@@ -24,9 +24,11 @@ import uuid
 from datetime import datetime, timezone
 
 from pymongo import MongoClient
+from qdrant_client import models
 
 from app.config import MONGODB_URI, MONGODB_DB_NAME
 from app.llm import llm_rapido
+from app.vectorstore import qdrant, gerar_embedding, COLLECTION_MEMORIA
 
 _client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
 col_sessoes = _client[MONGODB_DB_NAME]["sessoes"]
@@ -82,14 +84,24 @@ def _doc_id_da_sessao(session_id: str) -> str | None:
     return doc["_id"]
 
 
-def iniciar_sessao(session_id: str) -> str:
+def iniciar_sessao(session_id: str, user_id: str | None = None) -> str:
     """
     Garante que existe um documento de sessão aberto para este session_id
     e devolve o _id dele. Se já houver um (em memória ou no Mongo), não cria
     outro — é seguro chamar a cada turno.
+
+    O `user_id` identifica o DONO da conversa de forma estável entre sessões
+    (o session_id muda a cada "nova sessão"; o user_id não). É por ele que
+    recuperar_historico() acha as conversas passadas. Se a sessão já existia
+    sem user_id, ele é preenchido agora.
     """
     doc_id = _doc_id_da_sessao(session_id)
     if doc_id:
+        if user_id:
+            col_sessoes.update_one(
+                {"_id": doc_id, "user_id": {"$in": ["", None]}},
+                {"$set": {"user_id": user_id}},
+            )
         return doc_id
 
     # _id string em vez do ObjectId padrão: o doc_id atravessa camadas (tool,
@@ -98,6 +110,7 @@ def iniciar_sessao(session_id: str) -> str:
     col_sessoes.insert_one({
         "_id":          doc_id,
         "session_id":   session_id,
+        "user_id":      user_id,
         "iniciada_em":  _agora(),
         "encerrada_em": None,
         "mensagens":    [],
@@ -107,7 +120,9 @@ def iniciar_sessao(session_id: str) -> str:
     return doc_id
 
 
-def salvar_mensagem(session_id: str, role: str, content: str) -> None:
+def salvar_mensagem(
+    session_id: str, role: str, content: str, user_id: str | None = None
+) -> None:
     """
     Acrescenta uma mensagem ao array `mensagens` da sessão em andamento.
 
@@ -116,7 +131,7 @@ def salvar_mensagem(session_id: str, role: str, content: str) -> None:
     grafo, depois do guardrail — invertê-la persistiria o CPF do usuário em
     texto puro no MongoDB.
     """
-    doc_id = iniciar_sessao(session_id)
+    doc_id = iniciar_sessao(session_id, user_id)
 
     col_sessoes.update_one(
         {"_id": doc_id},
@@ -157,7 +172,10 @@ def encerrar_sessao(session_id: str) -> str:
     if not doc_id:
         return ""
 
-    doc = col_sessoes.find_one({"_id": doc_id}, {"mensagens": 1})
+    doc = col_sessoes.find_one(
+        {"_id": doc_id},
+        {"mensagens": 1, "user_id": 1, "iniciada_em": 1},
+    )
     mensagens = (doc or {}).get("mensagens") or []
     if not mensagens:
         # Sessão aberta e vazia: não há o que resumir. Devolver "" (e não erro)
@@ -190,39 +208,93 @@ def encerrar_sessao(session_id: str) -> str:
         {"_id": doc_id},
         {"$set": {"resumo": resumo, "encerrada_em": _agora()}},
     )
+
+    # Índice de busca semântica no Qdrant. O Mongo continua sendo o armazém
+    # (mensagens + metadados); o Qdrant guarda só o vetor do resumo e um payload
+    # mínimo, e devolve o doc_id que aponta de volta pro documento completo.
+    #
+    # O filtro de recuperação usa user_id (estável entre sessões), não
+    # session_id. Uma falha aqui não pode derrubar o encerramento — o resumo já
+    # está salvo no Mongo e o recuperar_historico() tem fallback pra ele.
+    _indexar_resumo_qdrant(doc_id, doc, resumo, session_id)
+
     _sessoes_ativas.pop(session_id, None)
 
     return resumo
 
 
-def recuperar_historico(session_id: str, busca: str = "", limite: int = 3) -> list[dict]:
+def _indexar_resumo_qdrant(doc_id: str, doc: dict, resumo: str, session_id: str) -> None:
+    try:
+        iniciada_em = doc.get("iniciada_em")
+        qdrant.upsert(
+            collection_name=COLLECTION_MEMORIA,
+            points=[
+                models.PointStruct(
+                    id=doc_id,
+                    vector=gerar_embedding(resumo),
+                    payload={
+                        "user_id":     doc.get("user_id"),
+                        "session_id":  session_id,
+                        "resumo":      resumo,
+                        "iniciada_em": iniciada_em.isoformat()
+                                       if hasattr(iniciada_em, "isoformat")
+                                       else str(iniciada_em),
+                    },
+                )
+            ],
+        )
+    except Exception as e:
+        print(f"[memory] falha ao indexar resumo no Qdrant ({session_id}): {e}")
+
+
+def recuperar_historico(user_id: str, busca: str = "", limite: int = 3) -> list[dict]:
     """
-    Recupera resumos de sessões ANTERIORES (já encerradas) de um usuário.
+    Recupera resumos de sessões ANTERIORES (já encerradas) deste usuário.
 
-    Estratégia: olha primeiro os resumos. Se houver termo de busca, filtra
-    por ele; senão, traz as sessões mais recentes. As mensagens completas
-    NÃO vêm aqui — para isso use recuperar_mensagens(doc_id).
+    Com termo de busca → busca SEMÂNTICA no Qdrant (embedding do termo vs.
+    embedding dos resumos), então "viajar" encontra "viagem para Salvador".
+    Sem termo, ou se o Qdrant falhar → cai no Mongo e traz as mais recentes.
+    As mensagens completas NÃO vêm aqui — para isso use recuperar_mensagens(doc_id).
 
-    session_id : identifica o usuário (hoje fixo, depois dinâmico)
-    busca      : termo opcional para filtrar resumos relevantes
-    limite     : máximo de sessões retornadas (mais recentes primeiro)
+    user_id : identificador estável do usuário (não muda entre sessões)
+    busca   : termo opcional para filtrar resumos relevantes
+    limite  : máximo de sessões retornadas
     """
-    # só sessões DESTE usuário que já têm resumo (= já encerradas).
-    # O $nin descarta a sessão em andamento, cujo resumo ainda está vazio —
-    # sem ele a tool devolveria a própria conversa atual como se fosse passado.
-    filtro = {"session_id": session_id, "resumo": {"$nin": ["", None]}}
-
-    # se houver termo de busca, filtra resumos que o contenham (case-insensitive).
-    # Acrescenta ao filtro existente em vez de substituí-lo, senão o $nin acima
-    # se perderia e a sessão atual voltaria para o resultado.
     if busca:
-        filtro["resumo"]["$regex"]   = busca
-        filtro["resumo"]["$options"] = "i"
+        try:
+            resultados = qdrant.query_points(
+                collection_name=COLLECTION_MEMORIA,
+                query=gerar_embedding(busca),
+                query_filter=models.Filter(must=[
+                    models.FieldCondition(
+                        key="user_id",
+                        match=models.MatchValue(value=user_id),
+                    )
+                ]),
+                limit=limite,
+            )
+            if resultados.points:
+                return [
+                    {
+                        "doc_id":      p.id,
+                        "iniciada_em": p.payload.get("iniciada_em", ""),
+                        "resumo":      p.payload["resumo"],
+                    }
+                    for p in resultados.points
+                ]
+        except Exception as e:
+            print(f"[memory] busca semântica falhou, caindo no Mongo: {e}")
 
+    # Fallback (sem busca, Qdrant vazio ou Qdrant fora do ar): sessões DESTE
+    # usuário que já têm resumo, mais recentes primeiro. O $nin descarta a
+    # sessão em andamento, cujo resumo ainda está vazio.
     docs = (
         col_sessoes
-        .find(filtro, {"resumo": 1, "iniciada_em": 1})  # projeção: sem mensagens
-        .sort("iniciada_em", -1)                          # mais recentes primeiro
+        .find(
+            {"user_id": user_id, "resumo": {"$nin": ["", None]}},
+            {"resumo": 1, "iniciada_em": 1},
+        )
+        .sort("iniciada_em", -1)
         .limit(limite)
     )
 

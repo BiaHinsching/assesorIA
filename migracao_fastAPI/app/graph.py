@@ -155,9 +155,11 @@ def no_guardrail_entrada(estado: Estado, config: RunnableConfig) -> dict:
     # A gravação mora aqui, e não antes, porque é este o primeiro ponto do fluxo
     # em que existe uma versão sem dado pessoal da pergunta. Perguntas bloqueadas
     # também são gravadas: o resumo deve refletir a conversa que houve.
-    session_id = (config or {}).get("configurable", {}).get("thread_id")
+    configuravel = (config or {}).get("configurable", {})
+    session_id = configuravel.get("thread_id")
+    user_id = configuravel.get("user_id")
     if session_id:
-        salvar_mensagem(session_id, "user", texto_anonimizado)
+        salvar_mensagem(session_id, "user", texto_anonimizado, user_id=user_id)
 
     return {
         "agentes_chamados": ["guardrail_entrada"],
@@ -233,17 +235,25 @@ fluxo_agentes = grafo.compile(checkpointer=memory)
 # ==============================================================================
 # FLUXO PRINCIPAL
 # ==============================================================================
-def executar_fluxo_assessor(pergunta_usuario: str, session_id: str) -> dict:
+def executar_fluxo_assessor(
+    pergunta_usuario: str, session_id: str, user_id: str = "usuario_teste"
+) -> dict:
     estado_inicial = {
         "messages": [{"role": "human", "content": pergunta_usuario}],
         "agentes_chamados":   [],
         "rota": "",
         "mapa_pii": {},
+        "session_id": session_id,
     }
 
+    # thread_id → memória CURTA (checkpointer, uma conversa).
+    # user_id   → memória LONGA (buscar_historico, sessões anteriores do MESMO
+    #             usuário). É o session_id que muda a cada "nova sessão"; o
+    #             user_id é o identificador estável que faz a memória de longo
+    #             prazo encontrar o passado.
     estado_final = fluxo_agentes.invoke(
         estado_inicial,
-        config={"configurable": {"thread_id": session_id}},
+        config={"configurable": {"thread_id": session_id, "user_id": user_id}},
     )
 
     resposta = estado_final["messages"][-1].content
@@ -252,7 +262,7 @@ def executar_fluxo_assessor(pergunta_usuario: str, session_id: str) -> dict:
     # saídas diferentes do grafo — guardrail_saida, resposta direta do roteador
     # e bloqueio na entrada — e só este ponto está depois de todas elas. A
     # pergunta é gravada no no_guardrail_entrada, onde nasce a versão anonimizada.
-    salvar_mensagem(session_id, "assistant", resposta)
+    salvar_mensagem(session_id, "assistant", resposta, user_id=user_id)
 
     return {
         "resposta": resposta,
