@@ -16,11 +16,16 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 MONGODB_URI     = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
 MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "assessoria")
 
+QDRANT_URL     = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+
 OBRIGATORIAS = {
     "GEMINI_API_KEY": GEMINI_API_KEY,
     "GROQ_API_KEY":   GROQ_API_KEY,
     "DATABASE_URL":   DATABASE_URL,
     "MONGODB_URI":    MONGODB_URI,
+    "QDRANT_URL":     QDRANT_URL,
+    "QDRANT_API_KEY": QDRANT_API_KEY,
 }
 
 
