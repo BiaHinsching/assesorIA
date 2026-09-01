@@ -1,8 +1,4 @@
 .venv
+.venv-win
 __pycache__
 .env
-
-chat.py
-client.py
-framework.py
-.venv-win
