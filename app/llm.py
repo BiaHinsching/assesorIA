@@ -24,32 +24,36 @@ _LOGGER = [_FallbackErrorLogger()]
 
 # ── ESPECIALISTA (financeiro / agenda) ────────────────────────────────────────
 # Primário: Gemini 2.5-flash. Bom em seguir o contrato de saída JSON dos
-# especialistas, mas o free tier são 20 req/dia.
+# especialistas, mas o free tier são 20 req/dia — quando acaba, cai pro Qwen.
+# max_retries=1 é CRÍTICO: com 0, o langchain-google-genai monta
+# HttpRetryOptions(attempts=0), que o SDK trata como "retry padrão" e fica ~18s
+# insistindo num 429 de cota antes de desistir. Com 1 = uma tentativa só, o 429
+# volta em ~0.3s e o fallback assume na hora.
+# timeout=10 é o MÍNIMO que o Gemini aceita ("Minimum allowed deadline is 10s").
 llm_gemini = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.7,
     top_p=0.95,
     api_key=GEMINI_API_KEY,
-    max_retries=0,
-    timeout=15,
+    max_retries=1,
+    timeout=10,
     callbacks=_LOGGER,
-    # O SDK google-genai tem retry próprio (à parte do max_retries do LangChain).
-    # Restringimos a retentativa a erros 5xx — sem isso, num 429 de cota ele
-    # ainda tentaria de novo antes de deixar o fallback assumir.
-    client_args={
-        "http_options": {
-            "retry_options": {"attempts": 3, "http_status_codes": [500, 502, 503, 504]}
-        }
-    },
 )
 
-# Fallback do especialista: qwen3.8-27b no Groq. Escolhido em teste — o
-# openai/gpt-oss-120b, quando o prompt pede JSON puro, tenta "chamar" uma tool
-# inexistente chamada `json` e o Groq rejeita com 400. O qwen devolve o JSON
-# direto, com tool calling funcionando.
+# Fallback do especialista: qwen3.8-27b no Groq. Escolhido em teste:
+#   - o openai/gpt-oss-120b, num prompt de saída JSON, tenta "chamar" uma tool
+#     inexistente chamada `json` e o Groq rejeita com 400;
+#   - o qwen devolve o JSON direto, com tool calling funcionando.
+# reasoning_effort="none" + max_tokens: o qwen é um modelo de raciocínio e por
+# padrão gasta MUITOS tokens de saída — o suficiente pra estourar o limite de
+# output-tokens-por-minuto do Groq free tier (OTPM 1000). Sem reasoning ele
+# responde curto e não bate no limite.
 llm_especialista_fallback = ChatGroq(
     model="qwen/qwen3.8-27b",
-    temperature=0.7,
+    temperature=0.3,
+    max_tokens=900,          # abaixo do OTPM 1000 do Groq free tier
+    reasoning_effort="none",
+    max_retries=1,
     api_key=GROQ_API_KEY,
     callbacks=_LOGGER,
 )

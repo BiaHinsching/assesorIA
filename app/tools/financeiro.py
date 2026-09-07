@@ -125,7 +125,7 @@ def add_transaction(
         except Exception:
             pass
 
-@tool('search-transactions', args_schema=QueryTransactionArgs)
+@tool('search_transactions', args_schema=QueryTransactionArgs)
 def search_transactions(
     text: str,
     start_date: Optional[datetime] = None,

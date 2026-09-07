@@ -84,10 +84,18 @@ def test_roteador_e_instancia_propria_nao_alias_do_fallback():
         assert fb is not llm_roteador
 
 
-def test_gemini_nao_retenta_429():
-    """O SDK google-genai só deve retentar erros 5xx, nunca 429 de cota."""
+def test_gemini_max_retries_1_para_cair_rapido_no_fallback():
+    """max_retries=0 faz o SDK insistir ~18s num 429 de cota antes de desistir.
+    Com 1, o erro volta na hora e o fallback assume."""
     from app.llm import llm_especialista
 
-    primario = llm_especialista.runnable
-    retry = primario.client_args["http_options"]["retry_options"]
-    assert 429 not in retry.get("http_status_codes", [])
+    assert llm_especialista.runnable.max_retries == 1
+
+
+def test_fallback_do_especialista_e_terso():
+    """O qwen é modelo de raciocínio: sem reasoning_effort='none' + max_tokens,
+    estoura o limite de output-tokens-por-minuto do Groq free tier."""
+    from app.llm import llm_especialista_fallback
+
+    assert llm_especialista_fallback.reasoning_effort == "none"
+    assert llm_especialista_fallback.max_tokens is not None

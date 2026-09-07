@@ -36,8 +36,8 @@ def buscar_historico(busca: str, config: RunnableConfig) -> str:
     Use SOMENTE quando a resposta depende de algo dito numa conversa passada
     — preferências, decisões ou planos que o usuário mencionou antes.
     NÃO use para dados que estão no banco (gastos, saldos, eventos): para isso
-    já existem as tools de consulta específicas como query_transactions,
-    total_balance, daily_balance.
+    já existem as tools específicas do agente financeiro (search_transactions,
+    saldo_total, saldo_diario).
 
     Args:
         busca: assunto a procurar nos resumos das conversas anteriores.
