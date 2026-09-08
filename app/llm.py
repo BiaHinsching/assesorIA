@@ -31,7 +31,7 @@ _LOGGER = [_FallbackErrorLogger()]
 # volta em ~0.3s e o fallback assume na hora.
 # timeout=10 é o MÍNIMO que o Gemini aceita ("Minimum allowed deadline is 10s").
 llm_gemini = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-flash-latest",
     temperature=0.7,
     top_p=0.95,
     api_key=GEMINI_API_KEY,
