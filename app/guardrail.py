@@ -93,12 +93,18 @@ CATEGORIA: [categoria]
 JUSTIFICATIVA: [uma linha]
 
 Categorias:
-APROVADO        - mensagem legítima sobre finanças (informativa), agenda ou operações
+APROVADO        - mensagem legítima sobre finanças (informativa), agenda ou operações.
+                  INCLUI perguntas do tipo "vale a pena / faz sentido pra mim
+                  investir em <classe> (cripto, ações, renda fixa, tesouro)?" —
+                  o assessor responde isso ancorado no perfil do usuário.
 OFENSIVO        - xingamentos, assédio, discurso de ódio
 PERIGOSO        - instruções que causam dano físico, psicológico ou coletivo
 ILICITO         - pedido de auxílio para atividades ilegais ou fraudulentas
 POLITICO        - opiniões ou debates políticos, partidos, eleições
-INDICACAO_INVEST - recomendação direta de ativo específico para comprar/vender/manter
+INDICACAO_INVEST - pedido de recomendação de um ATIVO ESPECÍFICO nomeado (um ticker,
+                  uma ação, uma moeda, um fundo) para comprar/vender/manter agora
+                  ("compro PETR4?", "vendo meu bitcoin hoje?"). NÃO é isto uma
+                  pergunta genérica sobre uma classe de investimento.
 
 Mensagem: {mensagem}
 """

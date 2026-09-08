@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 class ChatRequest(BaseModel):
@@ -24,6 +26,33 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     resposta: str = Field(..., examples=["Você tem 100 reais."])
     agentes_chamados: list[str] = Field(default_factory=list)
+
+
+class PerfilRequest(BaseModel):
+    """O que a tela Perfil envia no POST /perfil. O contrato é da tela — estes
+    nomes e tipos não mudam. A validação aqui é o que faz a API RECUSAR dado
+    inválido (422) em vez de estourar 500 lá dentro."""
+
+    user_id: str = Field(..., min_length=1, examples=["usuario_teste"])
+    renda_mensal: float = Field(..., gt=0, examples=[4200])
+    objetivo: str = Field(..., min_length=1, examples=["juntar para viagem em dezembro"])
+    tolerancia_risco: Literal["baixa", "media", "alta"] = Field(..., examples=["baixa"])
+    preferencias: str = Field(
+        ...,
+        min_length=1,
+        examples=["quero juntar para uma viagem a João Pessoa em dezembro; não quero investimento agressivo."],
+    )
+
+
+class PerfilResponse(BaseModel):
+    """Eco do perfil gravado — é assim que a tela confirma o salvamento."""
+
+    user_id: str
+    renda_mensal: float
+    objetivo: str
+    tolerancia_risco: str
+    preferencias: str
+    atualizado_em: str
 
 
 class SessionResponse(BaseModel):

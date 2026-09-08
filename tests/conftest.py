@@ -53,10 +53,12 @@ class FakeEmbedding:
 def fake_embedding(monkeypatch):
     fake = FakeEmbedding()
     import app.memory as memory
+    import app.perfil as perfil
     import app.vectorstore as vs
 
     monkeypatch.setattr(vs, "gerar_embedding", fake)
     monkeypatch.setattr(memory, "gerar_embedding", fake)
+    monkeypatch.setattr(perfil, "gerar_embedding", fake)
     return fake
 
 

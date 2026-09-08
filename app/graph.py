@@ -9,6 +9,7 @@ from app.llm import llm_especialista, llm_rapido, llm_roteador
 from app.tools.financeiro import TOOLS
 from app.tools.faq import faq_retriever
 from app.tools.memoria import TOOLS_MEMORIA
+from app.tools.perfil import TOOLS_PERFIL
 
 # Só salvar_mensagem entra aqui. iniciar_sessao() é chamada por ela mesma, e
 # encerrar_sessao() mudou de camada: virou POST /sessions/{id}/encerrar, em
@@ -53,9 +54,12 @@ router_app = create_agent(
     system_prompt=ROUTER_PROMPT_COMPLETO,
 )
 
+# TOOLS_PERFIL (consultar_perfil / buscar_preferencias) só entra AQUI: o perfil
+# é dado de apoio de QUEM aconselha dinheiro. Não vai para o roteador (não é
+# rota), nem para a agenda, nem para o FAQ, nem existe agente "perfil".
 financeiro_app = create_agent(
     model=llm_especialista,
-    tools=TOOLS + TOOLS_MEMORIA,
+    tools=TOOLS + TOOLS_MEMORIA + TOOLS_PERFIL,
     system_prompt=FINANCEIRO_PROMPT_COMPLETO,
 )
 
