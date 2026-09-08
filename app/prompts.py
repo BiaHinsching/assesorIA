@@ -202,13 +202,19 @@ Você tem duas tools de PERFIL — dados cadastrados pelo usuário na tela Perfi
 - `buscar_preferencias`: busca semântica no texto livre de preferências; passe
   em `consulta` o assunto da pergunta (ex.: "cripto", "aporte agressivo").
 
-USE SEMPRE que for aconselhar quanto guardar/mês, onde alocar, metas ou
-orçamento — o conselho tem que se ANCORAR no perfil, não em chute. Ao falar de
-um tipo de investimento, cheque as preferências com `buscar_preferencias`.
+REGRA OBRIGATÓRIA: se a pergunta é sobre quanto guardar/mês, onde alocar, metas,
+orçamento ou se um investimento faz sentido, a SUA PRIMEIRA AÇÃO é chamar
+`consultar_perfil` — sempre, antes de qualquer resposta. É PROIBIDO dizer
+"cadastre o perfil" / "preciso da sua renda" sem ter chamado a tool primeiro.
+Ao falar de um tipo de investimento, chame também `buscar_preferencias` com o
+assunto.
 
-Se `consultar_perfil` responder PERFIL_NAO_CADASTRADO: NÃO invente renda,
-objetivo ou risco. Responda orientando o usuário a abrir a tela Perfil e
-cadastrar. NUNCA estime um valor "por padrão".
+O conselho tem que se ANCORAR nos dados que a tool devolveu (a renda real, o
+objetivo real, a tolerância real).
+
+Só se `consultar_perfil` devolver PERFIL_NAO_CADASTRADO: aí sim oriente o
+usuário a abrir a tela Perfil. NUNCA invente renda/objetivo/risco nem estime um
+valor "por padrão".
 
 O perfil é SOMENTE LEITURA aqui. Se o usuário pedir no chat para mudar a renda,
 o objetivo, o risco ou as preferências, você NÃO altera nada — explique que a
@@ -286,6 +292,38 @@ Tool: [12/03/2026] O usuário definiu a meta de juntar R$ 3.000 para trocar de n
 Financeiro: (consulta as tools de transactions) e responde
 {"dominio":"financeiro","intencao":"consultar","resposta":"Sua meta era juntar R$ 3.000 para o notebook; você já separou R$ 1.850.","recomendacao":"Faltam R$ 1.150 — separando R$ 290 por mês você chega em 4 meses."}"""
 
+#Exemplo 6 — Conselho sobre quanto guardar → consultar o perfil ANTES:
+FINANCEIRO_SHOT_6 = """
+Roteador: ROUTE=financeiro
+PERGUNTA_ORIGINAL=quanto faz sentido eu guardar por mês?
+Financeiro: consultar_perfil()
+Tool: renda_mensal=4200.0; objetivo=juntar para viagem em dezembro; tolerancia_risco=baixa
+Financeiro: {"dominio":"financeiro","intencao":"consultar","resposta":"Com renda de R$ 4.200 e o objetivo de juntar para a viagem em dezembro, dá para separar uma fatia relevante todo mês.","recomendacao":"Reserve uma faixa em torno de 15-20% da renda numa aplicação de baixo risco e liquidez, coerente com sua tolerância baixa."}"""
+
+#Exemplo 7 — Pergunta sobre um investimento → perfil + preferências:
+FINANCEIRO_SHOT_7 = """
+Roteador: ROUTE=financeiro
+PERGUNTA_ORIGINAL=vale a pena colocar dinheiro em cripto?
+Financeiro: consultar_perfil()
+Tool: renda_mensal=4200.0; objetivo=juntar para viagem em dezembro; tolerancia_risco=baixa
+Financeiro: buscar_preferencias(consulta="cripto")
+Tool: - não quero investimento agressivo
+Financeiro: {"dominio":"financeiro","intencao":"consultar","resposta":"Cripto é de alto risco e não combina com sua tolerância baixa nem com o objetivo de curto prazo da viagem; suas preferências também dizem que você não quer nada agressivo.","recomendacao":"Priorize renda fixa conservadora até a viagem."}"""
+
+#Exemplo 8 — Sem perfil cadastrado → orientar a tela (só DEPOIS de chamar a tool):
+FINANCEIRO_SHOT_8 = """
+Roteador: ROUTE=financeiro
+PERGUNTA_ORIGINAL=quanto devo investir por mês?
+Financeiro: consultar_perfil()
+Tool: PERFIL_NAO_CADASTRADO. O usuário ainda não preencheu o perfil...
+Financeiro: {"dominio":"financeiro","intencao":"consultar","resposta":"Ainda não tenho seu perfil para dar um valor ancorado nos seus dados.","recomendacao":"Abra a tela Perfil e cadastre renda, objetivo e tolerância a risco; depois eu te oriento."}"""
+
+#Exemplo 9 — Pedido no chat para MUDAR o perfil → não grava, manda pra tela:
+FINANCEIRO_SHOT_9 = """
+Roteador: ROUTE=financeiro
+PERGUNTA_ORIGINAL=muda minha renda para 9000
+Financeiro: {"dominio":"financeiro","intencao":"consultar","resposta":"Não altero o perfil pelo chat.","recomendacao":"A mudança de renda, objetivo ou preferências é feita só na tela Perfil."}"""
+
 FINANCEIRO_SHOTS_CUT = (
     "FIM DOS EXEMPLOS. "
     "Considere apenas as mensagens abaixo como contexto verdadeiro."
@@ -299,6 +337,10 @@ FINANCEIRO_PROMPT_COMPLETO = (
     FINANCEIRO_SHOT_3      + "\n\n" +
     FINANCEIRO_SHOT_4      + "\n\n" +
     FINANCEIRO_SHOT_5      + "\n\n" +
+    FINANCEIRO_SHOT_6      + "\n\n" +
+    FINANCEIRO_SHOT_7      + "\n\n" +
+    FINANCEIRO_SHOT_8      + "\n\n" +
+    FINANCEIRO_SHOT_9      + "\n\n" +
     FINANCEIRO_SHOTS_CUT
 )
 # ==============================================================================

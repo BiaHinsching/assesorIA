@@ -1,19 +1,8 @@
 // ============================================================
 // Configuração
 // ============================================================
-// Onde a API está. Há dois jeitos de abrir esta página, e os dois precisam
-// funcionar:
-//
-//   1. pelo próprio FastAPI (http://localhost:8000) — o mount("/") do main.py
-//      serve o frontend. Mesma origem, "" basta, sem CORS envolvido.
-//   2. por fora (Live Server, outra porta, file://) — aí a origem é outra e o
-//      endereço precisa ser absoluto, com o CORS liberado no main.py.
-//
-// Detectar em vez de fixar evita o erro mais chato daqui: com "" fixo e a
-// página aberta pelo Live Server, o POST vai para o servidor de arquivos, que
-// não aceita POST e responde 405 — parecendo bug da API quando não é.
-const API_SERVIDOR = "http://localhost:8000";
-const API_BASE = window.location.origin === API_SERVIDOR ? "" : API_SERVIDOR;
+// Ajuste para a URL onde o FastAPI está rodando.
+const API_BASE = "http://localhost:8000";
 const CHAT_ENDPOINT = `${API_BASE}/chat`;
 
 // ============================================================
@@ -33,19 +22,6 @@ const hint = document.getElementById("hint");
 // Sessão
 // ============================================================
 const SESSION_STORAGE_KEY = "assistente_session_id";
-const USER_STORAGE_KEY = "assistente_user_id";
-
-// O user_id identifica a PESSOA e é estável entre sessões — é o que faz a
-// memória de longo prazo (buscar_historico) achar conversas antigas. Diferente
-// do session_id, ele NÃO é trocado no botão "nova sessão".
-function obterOuCriarUserId() {
-  let id = localStorage.getItem(USER_STORAGE_KEY);
-  if (!id) {
-    id = "user-" + gerarSessionId();
-    localStorage.setItem(USER_STORAGE_KEY, id);
-  }
-  return id;
-}
 
 function gerarSessionId() {
   if (window.crypto && crypto.randomUUID) {
@@ -63,54 +39,14 @@ function obterOuCriarSessionId() {
   return id;
 }
 
-// Pede ao servidor que feche a sessão: ele gera o resumo via LLM e grava no
-// MongoDB. É esse resumo que a tool buscar_historico vai encontrar no futuro —
-// sem esta chamada, a conversa fica salva mas invisível para a memória longa.
-// Falhar aqui não pode impedir o usuário de começar uma conversa nova, por isso
-// o erro só vai para o console.
-async function encerrarSessaoAtual(id) {
-  try {
-    const resposta = await fetch(
-      `${API_BASE}/sessions/${encodeURIComponent(id)}/encerrar`,
-      { method: "POST" }
-    );
-    if (!resposta.ok) return null;
-    const dados = await resposta.json();
-    return dados.resumo;
-  } catch (erro) {
-    console.warn("Não foi possível encerrar a sessão anterior:", erro);
-    return null;
-  }
-}
-
-async function iniciarNovaSessao() {
-  const anterior = sessionId;
-
-  // Gerar o resumo é uma chamada de LLM e leva alguns segundos: sem o await o
-  // id seria trocado antes da resposta chegar, e o botão pareceria travado.
-  resetButton.disabled = true;
-  setHint("Encerrando a sessão anterior…");
-  const resumo = await encerrarSessaoAtual(anterior);
-
+function iniciarNovaSessao() {
   const id = gerarSessionId();
   localStorage.setItem(SESSION_STORAGE_KEY, id);
-  // ATENÇÃO: reatribuir a variável é obrigatório. Gravar no localStorage só
-  // afeta o próximo carregamento da página; é `sessionId` que vai no corpo do
-  // POST /chat. Sem esta linha, o botão limpa a tela e mostra um id novo
-  // enquanto o servidor continua recebendo o id antigo — e as duas conversas
-  // se misturam num documento só.
-  sessionId = id;
   exibirSessionId(id);
-
   thread.innerHTML = "";
   thread.appendChild(threadEmpty);
   threadEmpty.style.display = "block";
-  setHint(
-    resumo
-      ? `Sessão anterior encerrada. Resumo: ${resumo}`
-      : "Nova sessão iniciada."
-  );
-  resetButton.disabled = false;
+  setHint("Nova sessão iniciada.");
 }
 
 function exibirSessionId(id) {
@@ -119,7 +55,6 @@ function exibirSessionId(id) {
 }
 
 let sessionId = obterOuCriarSessionId();
-const userId = obterOuCriarUserId();
 exibirSessionId(sessionId);
 
 resetButton.addEventListener("click", iniciarNovaSessao);
@@ -243,7 +178,6 @@ composer.addEventListener("submit", async (evento) => {
       body: JSON.stringify({
         pergunta: pergunta,
         session_id: sessionId,
-        user_id: userId,
       }),
     });
 
@@ -269,7 +203,7 @@ composer.addEventListener("submit", async (evento) => {
     adicionarMensagem({
       tipo: "error",
       texto: erro.message.includes("Failed to fetch")
-        ? `Não foi possível falar com a API em ${API_BASE || window.location.origin}. Verifique se o servidor está rodando e se o CORS está liberado.`
+        ? `Não foi possível falar com a API em ${API_BASE}. Verifique se o servidor está rodando e se o CORS está liberado.`
         : erro.message,
     });
     setHint(erro.message, true);
