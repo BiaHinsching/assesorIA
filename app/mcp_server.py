@@ -138,3 +138,7 @@ def update_transaction(
         "payment_method": payment_method,
         "occurred_at": occurred_at,
     })
+
+
+if __name__ == "__main__":
+    mcp.run()
