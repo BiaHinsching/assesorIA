@@ -6,7 +6,7 @@ for _problema in validar_config():
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.routes import chat, sessions
+from app.routes import chat, sessions, perfil
 
 app = FastAPI(
     title = "AssesorIA",
@@ -49,6 +49,7 @@ def health() -> dict:
 # ==============================================================================
 app.include_router(chat.router)
 app.include_router(sessions.router)
+app.include_router(perfil.router)
 
 if (FRONTEND_DIR / "index.html").exists():
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
