@@ -7,6 +7,8 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from app.llm import llm_especialista, llm_rapido, llm_roteador
 from app.tools.financeiro import TOOLS
+from app.tools.agenda import TOOLS_AGENDA
+from app.tools.calendario_google import TOOLS_GOOGLE
 from app.tools.faq import faq_retriever
 from app.tools.memoria import TOOLS_MEMORIA
 from app.tools.perfil import TOOLS_PERFIL
@@ -63,11 +65,12 @@ financeiro_app = create_agent(
     system_prompt=FINANCEIRO_PROMPT_COMPLETO,
 )
 
-# Ainda não existe app/tools/agenda.py, então a agenda tem só a memória por
-# enquanto — ela monta o JSON do evento no texto, sem persistir nada.
+# TOOLS_AGENDA grava/consulta no Postgres (tabela events). TOOLS_GOOGLE é o
+# cliente MCP do Google Calendar — outro destino, mesmo evento (ver prompts.py,
+# seção GRAVAÇÃO do AGENDA_PROMPT).
 agenda_app = create_agent(
     model=llm_especialista,
-    tools=TOOLS_MEMORIA,
+    tools=TOOLS_AGENDA + TOOLS_GOOGLE + TOOLS_MEMORIA,
     system_prompt=AGENDA_PROMPT_COMPLETO,
 )
 

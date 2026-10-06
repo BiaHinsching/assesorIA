@@ -18,6 +18,10 @@ from app.tools.financeiro import (
     saldo_total as _saldo_total,
     update_transaction as _update_transaction,
 )
+from app.tools.agenda import (
+    add_event as _add_event,
+    query_events as _query_events,
+)
 
 mcp = MCPServer(
     name="assessor-financeiro",
@@ -137,6 +141,52 @@ def update_transaction(
         "description": description,
         "payment_method": payment_method,
         "occurred_at": occurred_at,
+    })
+
+
+@mcp.tool(
+    name="add_event",
+    title="Registrar evento",
+    description="Registra um compromisso na tabela events (agenda).",
+    annotations=ESCRITA,
+)
+def add_event(
+    title: Annotated[str, Field(description="Título do evento.")],
+    source_text: Annotated[str, Field(description="Texto original do usuário.")],
+    start_time: Annotated[str, Field(description="Início em ISO 8601 com fuso (ex.: 2026-09-24T15:00:00-03:00).")],
+    end_time: Annotated[Optional[str], Field(description="Fim em ISO 8601 (opcional).")] = None,
+    location: Annotated[Optional[str], Field(description="Local do evento (opcional).")] = None,
+    notes: Annotated[Optional[str], Field(description="Observações (opcional).")] = None,
+) -> dict[str, Any]:
+    return _add_event.invoke({
+        "title": title,
+        "source_text": source_text,
+        "start_time": start_time,
+        "end_time": end_time,
+        "location": location,
+        "notes": notes,
+    })
+
+
+@mcp.tool(
+    name="query_events",
+    title="Consultar agenda",
+    description="Consulta eventos da agenda por texto e datas locais (America/Sao_Paulo).",
+    annotations=LEITURA,
+)
+def query_events(
+    text: Annotated[Optional[str], Field(description="Texto para busca em title, location, notes ou source_text.")] = None,
+    date_local: Annotated[Optional[str], Field(description="Dia local (YYYY-MM-DD).")] = None,
+    date_from_local: Annotated[Optional[str], Field(description="Data inicial (YYYY-MM-DD), inclusive.")] = None,
+    date_to_local: Annotated[Optional[str], Field(description="Data final (YYYY-MM-DD), inclusive.")] = None,
+    limit: Annotated[int, Field(ge=1, le=200, description="Máximo de registros (1..200).")] = 20,
+) -> dict[str, Any]:
+    return _query_events.invoke({
+        "text": text,
+        "date_local": date_local,
+        "date_from_local": date_from_local,
+        "date_to_local": date_to_local,
+        "limit": limit,
     })
 
 
