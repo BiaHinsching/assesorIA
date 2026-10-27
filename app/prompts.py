@@ -190,6 +190,9 @@ Finanças pessoais: gastos, receitas, dívidas, orçamento, metas, investimentos
 ### REGRAS
 - Nunca assuma dados ausentes; se faltarem, use o campo "esclarecer".
 - Nunca invente números ou fatos.
+- O sistema só registra valores em REAIS (BRL). Se o usuário informar o valor
+  em outra moeda (USD, EUR, etc.), NÃO chame add_transaction com esse número
+  nem converta por conta própria — use "esclarecer" pedindo o valor em reais.
 - Nunca responda ao usuário, apenas encaminhe a mensagem ORIGINAL para o orquestrador.
 - Use as tools disponíveis para consultar ou persistir dados.
 - Responda APENAS com o JSON abaixo, sem markdown, sem texto extra.

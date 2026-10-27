@@ -8,7 +8,7 @@ from app.db import get_conn
 
 # Essa classe garante que o objeto de Python passe todos esses campos
 class AddTransactionArgs(BaseModel):
-    amount: float = Field(..., description="Valor da transação (use positivo).")
+    amount: float = Field(..., description="Valor da transação EM REAIS (BRL), use positivo. Nunca aceite nem converta valores informados em outra moeda (USD, EUR, etc.).")
     source_text: str = Field(..., description="Texto original do usuário.")
     occurred_at: Optional[str] = Field(
         default=None,
