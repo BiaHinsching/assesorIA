@@ -18,6 +18,7 @@ fastapi==0.141.1
 filetype==1.2.0
 frozenlist==1.8.0
 google-auth==2.48.0
+google-auth-oauthlib==1.4.1
 google-genai==1.65.0
 greenlet==3.3.2
 groq==0.37.1
@@ -46,6 +47,7 @@ langgraph-prebuilt==1.0.8
 langgraph-sdk==0.3.9
 langsmith==0.7.11
 marshmallow==3.26.2
+mcp==2.2.0
 multidict==6.7.1
 mypy_extensions==1.1.0
 numpy==2.4.3

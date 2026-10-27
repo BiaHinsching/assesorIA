@@ -42,6 +42,7 @@ function obterOuCriarSessionId() {
 function iniciarNovaSessao() {
   const id = gerarSessionId();
   localStorage.setItem(SESSION_STORAGE_KEY, id);
+  sessionId = id; // sem isto, o POST /chat continuava mandando o session_id antigo
   exibirSessionId(id);
   thread.innerHTML = "";
   thread.appendChild(threadEmpty);

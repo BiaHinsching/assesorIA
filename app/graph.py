@@ -7,10 +7,14 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from app.llm import llm_especialista, llm_rapido, llm_roteador
 from app.tools.financeiro import TOOLS
+from app.tools.agenda import TOOLS_AGENDA
+from app.tools.calendario_google import TOOLS_GOOGLE
 from app.tools.faq import faq_retriever
 from app.tools.memoria import TOOLS_MEMORIA
 from app.tools.perfil import TOOLS_PERFIL
-
+from app.memory import salvar_mensagem
+from app.juiz import no_juiz
+from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
 # Só salvar_mensagem entra aqui. iniciar_sessao() é chamada por ela mesma, e
 # encerrar_sessao() mudou de camada: virou POST /sessions/{id}/encerrar, em
 # app/routes/sessions.py. O critério é a natureza do evento — salvar_mensagem()
@@ -63,11 +67,12 @@ financeiro_app = create_agent(
     system_prompt=FINANCEIRO_PROMPT_COMPLETO,
 )
 
-# Ainda não existe app/tools/agenda.py, então a agenda tem só a memória por
-# enquanto — ela monta o JSON do evento no texto, sem persistir nada.
+# TOOLS_AGENDA grava/consulta no Postgres (tabela events). TOOLS_GOOGLE é o
+# cliente MCP do Google Calendar — outro destino, mesmo evento (ver prompts.py,
+# seção GRAVAÇÃO do AGENDA_PROMPT).
 agenda_app = create_agent(
     model=llm_especialista,
-    tools=TOOLS_MEMORIA,
+    tools=TOOLS_AGENDA + TOOLS_GOOGLE + TOOLS_MEMORIA,
     system_prompt=AGENDA_PROMPT_COMPLETO,
 )
 
@@ -122,16 +127,19 @@ def no_roteador(estado: Estado, config: RunnableConfig) -> dict:
         "rota": rota,
     }
 
-def no_orquestrador(estado: Estado) -> dict:
+def no_orquestrador(estado: Estado, config: RunnableConfig) -> dict:
     ultima_especialiasta = ""
     for mensagem in reversed(estado["messages"]):
         if mensagem.type == "ai" and mensagem.content:
             ultima_especialiasta = mensagem.content
             break
-        
+
+    # Mesmo motivo do no_roteador: o orquestrador é chamado como função comum,
+    # então o config precisa ser repassado à mão para as chamadas de modelo
+    # herdarem thread_id/user_id.
     saida = orquestrador_app.invoke({
         "messages": [estado["messages"][-1]],
-    })
+    }, config=config)
     
     return {
         "agentes_chamados": ["orquestrador"],
@@ -205,6 +213,7 @@ grafo.add_node("faq",          faq_app)
 grafo.add_node("orquestrador", no_orquestrador)
 grafo.add_node("guardrail_entrada", no_guardrail_entrada)
 grafo.add_node("guardrail_saida", no_guardrail_saida)
+grafo.add_node("juiz", no_juiz)
 
 grafo.set_entry_point("guardrail_entrada")
 
@@ -228,8 +237,10 @@ grafo.add_conditional_edges(
 grafo.add_edge("financeiro",   "orquestrador")
 grafo.add_edge("agenda",       "orquestrador")
 grafo.add_edge("orquestrador", "guardrail_saida")
-grafo.add_edge("guardrail_saida", END)
-grafo.add_edge("faq",          END)   # FAQ bypassa o orquestrador
+grafo.add_edge("guardrail_saida", "juiz")
+grafo.add_edge("faq",          "juiz")
+grafo.add_edge("juiz",         END)
+   # FAQ bypassa o orquestrador
 
 # Memória centralizada no grafo — persiste o Estado inteiro entre turns
 memory = MemorySaver()
@@ -250,25 +261,36 @@ def executar_fluxo_assessor(
         "session_id": session_id,
     }
 
-    # thread_id → memória CURTA (checkpointer, uma conversa).
-    # user_id   → memória LONGA (buscar_historico, sessões anteriores do MESMO
-    #             usuário). É o session_id que muda a cada "nova sessão"; o
-    #             user_id é o identificador estável que faz a memória de longo
-    #             prazo encontrar o passado.
-    estado_final = fluxo_agentes.invoke(
-        estado_inicial,
-        config={"configurable": {"thread_id": session_id, "user_id": user_id}},
-    )
+    # O registro abre antes do invoke e fecha no finally, inclusive quando
+    # o grafo levanta. A rota /monitor só lê o que ficou anotado.
+    turno_id = abrir_turno()
+    status = "erro"
+    rota = ""
+    try:
+        # thread_id → memória CURTA (checkpointer, uma conversa).
+        # user_id   → memória LONGA (buscar_historico, sessões anteriores do MESMO
+        #             usuário). É o session_id que muda a cada "nova sessão"; o
+        #             user_id é o identificador estável que faz a memória de longo
+        #             prazo encontrar o passado.
+        estado_final = fluxo_agentes.invoke(
+            estado_inicial,
+            config={"configurable": {"thread_id": session_id, "user_id": user_id}},
+        )
 
-    resposta = estado_final["messages"][-1].content
+        resposta = estado_final["messages"][-1].content
 
-    # A resposta é gravada aqui, e não dentro de um nó, porque existem três
-    # saídas diferentes do grafo — guardrail_saida, resposta direta do roteador
-    # e bloqueio na entrada — e só este ponto está depois de todas elas. A
-    # pergunta é gravada no no_guardrail_entrada, onde nasce a versão anonimizada.
-    salvar_mensagem(session_id, "assistant", resposta, user_id=user_id)
+        # A resposta é gravada aqui, e não dentro de um nó, porque existem três
+        # saídas diferentes do grafo — guardrail_saida, resposta direta do roteador
+        # e bloqueio na entrada — e só este ponto está depois de todas elas. A
+        # pergunta é gravada no no_guardrail_entrada, onde nasce a versão anonimizada.
+        salvar_mensagem(session_id, "assistant", resposta, user_id=user_id)
 
-    return {
-        "resposta": resposta,
-        "agentes_chamados": estado_final["agentes_chamados"],
-    }
+        status = status_do_estado(estado_final)
+        rota = estado_final.get("rota") or ""
+
+        return {
+            "resposta": resposta,
+            "agentes_chamados": estado_final["agentes_chamados"],
+        }
+    finally:
+        fechar_turno(turno_id, session_id=session_id, rota=rota, status=status)
