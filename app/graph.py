@@ -13,6 +13,7 @@ from app.tools.faq import faq_retriever
 from app.tools.memoria import TOOLS_MEMORIA
 from app.tools.perfil import TOOLS_PERFIL
 from app.memory import salvar_mensagem
+from app.juiz import no_juiz
 from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
 # Só salvar_mensagem entra aqui. iniciar_sessao() é chamada por ela mesma, e
 # encerrar_sessao() mudou de camada: virou POST /sessions/{id}/encerrar, em
@@ -212,6 +213,7 @@ grafo.add_node("faq",          faq_app)
 grafo.add_node("orquestrador", no_orquestrador)
 grafo.add_node("guardrail_entrada", no_guardrail_entrada)
 grafo.add_node("guardrail_saida", no_guardrail_saida)
+grafo.add_node("juiz", no_juiz)
 
 grafo.set_entry_point("guardrail_entrada")
 
@@ -235,8 +237,10 @@ grafo.add_conditional_edges(
 grafo.add_edge("financeiro",   "orquestrador")
 grafo.add_edge("agenda",       "orquestrador")
 grafo.add_edge("orquestrador", "guardrail_saida")
-grafo.add_edge("guardrail_saida", END)
-grafo.add_edge("faq",          END)   # FAQ bypassa o orquestrador
+grafo.add_edge("guardrail_saida", "juiz")
+grafo.add_edge("faq",          "juiz")
+grafo.add_edge("juiz",         END)
+   # FAQ bypassa o orquestrador
 
 # Memória centralizada no grafo — persiste o Estado inteiro entre turns
 memory = MemorySaver()

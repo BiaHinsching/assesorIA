@@ -211,9 +211,9 @@ def ligar_coleta() -> None:
     global _ligado
     if _ligado:
         return
-    from app.llms import llm_gemini, llm_groq, llm_rapido
+    from app.llm import llm_gemini, llm_especialista_fallback, llm_rapido, llm_roteador
 
-    for modelo in (llm_gemini, llm_groq, llm_rapido):
+    for modelo in (llm_gemini, llm_especialista_fallback, llm_rapido, llm_roteador):
         atuais = list(modelo.callbacks or [])
         if not any(isinstance(item, ColetorChamadas) for item in atuais):
             modelo.callbacks = [*atuais, coletor]

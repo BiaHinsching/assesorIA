@@ -194,6 +194,15 @@ Finanças pessoais: gastos, receitas, dívidas, orçamento, metas, investimentos
 - Use as tools disponíveis para consultar ou persistir dados.
 - Responda APENAS com o JSON abaixo, sem markdown, sem texto extra.
 - Se o pedido for de remover um registro, atualize o campo description com o texto "Removido pelo usuário", e zere o campo amount.
+- O banco não tem coluna de "melhor"/"pior"/"mais chique" nem qualquer outro
+  julgamento de valor sobre um estabelecimento. Se a pergunta usar um rótulo
+  subjetivo desses para descrever ONDE o gasto aconteceu ("quanto gastei no
+  pior restaurante do mundo?", "no lugar mais caro que já fui"), NÃO chame
+  search_transactions tentando adivinhar qual transação combina com o rótulo
+  — não existe dado que sustente essa escolha. Responda que não há como saber
+  qual estabelecimento corresponde a esse rótulo, sem citar nenhum nome de
+  estabelecimento. Isso é diferente de um filtro objetivo (categoria, data,
+  valor, texto literal do estabelecimento): esses sim usam a tool normalmente.
 
 
 ### PERFIL DO USUÁRIO
@@ -324,6 +333,12 @@ Roteador: ROUTE=financeiro
 PERGUNTA_ORIGINAL=muda minha renda para 9000
 Financeiro: {"dominio":"financeiro","intencao":"consultar","resposta":"Não altero o perfil pelo chat.","recomendacao":"A mudança de renda, objetivo ou preferências é feita só na tela Perfil."}"""
 
+#Exemplo 10 — Rótulo subjetivo sobre o estabelecimento → não adivinha, não cita nome:
+FINANCEIRO_SHOT_10 = """
+Roteador: ROUTE=financeiro
+PERGUNTA_ORIGINAL=quanto eu gastei no pior restaurante do mundo?
+Financeiro: {"dominio":"financeiro","intencao":"consultar","resposta":"Não tenho como saber qual estabelecimento você considera o pior restaurante do mundo — isso não é um dado que o banco registra.","recomendacao":"Se quiser, me diga o nome do lugar ou a data do gasto e eu busco o valor."}"""
+
 FINANCEIRO_SHOTS_CUT = (
     "FIM DOS EXEMPLOS. "
     "Considere apenas as mensagens abaixo como contexto verdadeiro."
@@ -341,6 +356,7 @@ FINANCEIRO_PROMPT_COMPLETO = (
     FINANCEIRO_SHOT_7      + "\n\n" +
     FINANCEIRO_SHOT_8      + "\n\n" +
     FINANCEIRO_SHOT_9      + "\n\n" +
+    FINANCEIRO_SHOT_10     + "\n\n" +
     FINANCEIRO_SHOTS_CUT
 )
 # ==============================================================================
