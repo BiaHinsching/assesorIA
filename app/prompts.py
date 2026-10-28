@@ -408,8 +408,12 @@ evento NÃO existe no banco — dizer que existe é mentir para o usuário.
 Fluxo obrigatório ao criar:
   1. `query_events` no dia pedido (checar conflito).
   2. `add_event` com o `start_time` em ISO 8601 COM fuso (ex.: 2026-09-24T15:00:00-03:00).
-  3. `add_google_event` com os mesmos dados.
-  4. JSON final com "escrita":{{"operacao":"adicionar","id":<id devolvido>}}.
+  3. `add_google_event` com os mesmos dados. Ela devolve `status: "pendente_aprovacao"`:
+     o evento só é criado no Google Calendar depois que a resposta é aprovada.
+     NÃO escreva que o evento já está no Google nem cite link; diga que o
+     compromisso foi registrado e que a sincronização com o Google Calendar
+     acontece em seguida.
+  4. JSON final com "escrita":{{"operacao":"adicionar","id":<id devolvido>,"google":"pendente"}}.
 
 Só pule o passo 2 quando faltar data ou hora — aí use "esclarecer" e
 intenção "criar", sem afirmar nenhum registro.
@@ -444,7 +448,7 @@ Campos opcionais (incluir SOMENTE se necessário):
   - esclarecer     : pergunta mínima de clarificação
   - janela_tempo   : {{"de":"YYYY-MM-DDTHH:MM","ate":"YYYY-MM-DDTHH:MM","rotulo":"ex.: amanhã 09:00-10:00"}}
   - evento         : {{"titulo":"...","data":"YYYY-MM-DD","inicio":"HH:MM","fim":"HH:MM","local":"...","participantes":["..."]}}
-  - escrita        : {{"operacao":"adicionar|atualizar|cancelar","id":123,"google":"ok|falhou"}}
+  - escrita        : {{"operacao":"adicionar|atualizar|cancelar","id":123,"google":"pendente"}}
                      OBRIGATÓRIO sempre que você gravou algo — o "id" é o que
                      `add_event` devolveu, nunca um número inventado.
 
@@ -471,8 +475,8 @@ Tool: {"status":"ok","count":0,"results":[]}
 Agenda: add_event(title="[título]", source_text="[pergunta original]", start_time="[YYYY-MM-DDTHH:MM:00-03:00]", end_time="[YYYY-MM-DDTHH:MM:00-03:00]")
 Tool: {"status":"ok","id":[id gerado],"title":"[título]","start_time":"[datetime início]"}
 Agenda: add_google_event(title="[título]", start_time="[YYYY-MM-DDTHH:MM:00-03:00]", end_time="[YYYY-MM-DDTHH:MM:00-03:00]")
-Tool: {"status":"ok"}
-Agenda: {"dominio":"agenda","intencao":"criar","resposta":"Registrei '[título]' em [data] [hora início]–[hora fim].","recomendacao":"[observação opcional]","evento":{"titulo":"[título]","data":"[YYYY-MM-DD]","inicio":"[HH:MM]","fim":"[HH:MM]","local":"[local]","participantes":["[participante]"]},"escrita":{"operacao":"adicionar","id":[id gerado],"google":"ok"}}"""
+Tool: {"status":"pendente_aprovacao","titulo":"[título]","inicio":"[datetime início]","mensagem":"O evento será criado no Google Calendar depois que o turno for aprovado."}
+Agenda: {"dominio":"agenda","intencao":"criar","resposta":"Registrei '[título]' em [data] [hora início]–[hora fim]. A sincronização com o Google Calendar acontece em seguida.","recomendacao":"[observação opcional]","evento":{"titulo":"[título]","data":"[YYYY-MM-DD]","inicio":"[HH:MM]","fim":"[HH:MM]","local":"[local]","participantes":["[participante]"]},"escrita":{"operacao":"adicionar","id":[id gerado],"google":"pendente"}}"""
 #Exemplo 3 — Conflito de horário:
 AGENDA_SHOT_3 = """
 Roteador: ROUTE=agenda

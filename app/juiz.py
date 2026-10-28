@@ -68,13 +68,17 @@ def _coleta(estado):
     return pergunta, resposta, evidencia[-6000:]
 
 
-def _publicar(texto, rotulo, resposta_original):
+def _publicar(texto, rotulo, resposta_original, aprovado=False):
+    # `juiz_aprovado` é o veredito em forma de dado. Só app/db.py o lê, para
+    # decidir entre commit e rollback das escritas do turno. Todo caminho que
+    # não seja uma aprovação explícita devolve False.
     print(f"[juiz] {rotulo}")
     if texto.strip() == (resposta_original or "").strip():
-        return {"agentes_chamados": [f"juiz:{rotulo}"]}
+        return {"agentes_chamados": [f"juiz:{rotulo}"], "juiz_aprovado": aprovado}
     return {
         "messages": [{"role": "assistant", "content": texto.strip()}],
         "agentes_chamados": [f"juiz:{rotulo}"],
+        "juiz_aprovado": aprovado,
     }
 
 
@@ -126,7 +130,7 @@ def _julgar_jev(pergunta, resposta, evidencia):
     choice = respostas["veredito"]["choice"]
     noul = float(respostas["apoiada"]["noul"])
     if choice == "apoiada" and noul >= LIMIAR:
-        return _publicar(resposta, f"apoiada noul={noul:.2f}", resposta)
+        return _publicar(resposta, f"apoiada noul={noul:.2f}", resposta, aprovado=True)
     rotulo = "apoiada:abaixo_do_limiar" if choice == "apoiada" else choice
     return _publicar(FRASE_SEGURA, f"{rotulo} noul={noul:.2f}", resposta)
 
@@ -134,7 +138,7 @@ def _julgar_jev(pergunta, resposta, evidencia):
 def no_juiz(estado: dict) -> dict:
     pergunta, resposta, evidencia = _coleta(estado)
     if not resposta:
-        return {"agentes_chamados": ["juiz:sem_resposta"]}
+        return {"agentes_chamados": ["juiz:sem_resposta"], "juiz_aprovado": False}
     try:
         return _julgar_jev(pergunta, resposta, evidencia)
     except Exception as exc:
