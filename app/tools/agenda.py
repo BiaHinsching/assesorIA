@@ -1,8 +1,9 @@
 from typing import Optional, List
 from langchain.tools import tool
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
-from app.db import get_conn
+from app.db import transacao
 
 
 class AddEventArgs(BaseModel):
@@ -25,39 +26,33 @@ def add_event(
     end_time: Optional[str] = None,
     location: Optional[str] = None,
     notes: Optional[str] = None,
+    config: RunnableConfig = None,
 ) -> dict:
     """Insere um evento/compromisso na agenda (tabela events) do banco de dados Postgres."""
-    conn = get_conn()
-    cur = conn.cursor()
+    # Dentro do grafo, a gravação fica pendente na transação do turno e só o
+    # veredito do juiz a confirma (ver app/db.py). Fora dele, commita como antes.
     try:
-        cur.execute(
-            """
-            INSERT INTO events
-                (title, start_time, end_time, location, notes, source_text)
-            VALUES
-                (%s, %s::timestamptz, %s::timestamptz, %s, %s, %s)
-            RETURNING id, start_time, end_time;
-            """,
-            (title, start_time, end_time, location, notes, source_text),
-        )
-        new_id, start, end = cur.fetchone()
-        conn.commit()
-        return {
-            "status": "ok",
-            "id": new_id,
-            "title": title,
-            "start_time": str(start),
-            "end_time": str(end) if end else None,
-        }
+        with transacao(config) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO events
+                    (title, start_time, end_time, location, notes, source_text)
+                VALUES
+                    (%s, %s::timestamptz, %s::timestamptz, %s, %s, %s)
+                RETURNING id, start_time, end_time;
+                """,
+                (title, start_time, end_time, location, notes, source_text),
+            )
+            new_id, start, end = cur.fetchone()
+            return {
+                "status": "ok",
+                "id": new_id,
+                "title": title,
+                "start_time": str(start),
+                "end_time": str(end) if end else None,
+            }
     except Exception as e:
-        conn.rollback()
         return {"status": "error", "message": str(e)}
-    finally:
-        try:
-            cur.close()
-            conn.close()
-        except Exception:
-            pass
 
 
 class QueryEventsArgs(BaseModel):
@@ -87,6 +82,7 @@ def query_events(
     date_from_local: Optional[str] = None,
     date_to_local: Optional[str] = None,
     limit: int = 20,
+    config: RunnableConfig = None,
 ) -> dict:
     """
     Consulta eventos da agenda (tabela events) com filtros por texto e datas locais (America/Sao_Paulo).
@@ -95,79 +91,73 @@ def query_events(
       - Intervalo (date_from_local/date_to_local): ASC (cronológico).
       - Caso contrário: ASC também (próximos compromissos primeiro a partir do filtro).
     """
-    conn = get_conn()
-    cur = conn.cursor()
+    # Lê pela conexão do turno para enxergar o que o próprio turno já gravou.
     try:
-        if date_local and (date_from_local or date_to_local):
-            return {"status": "error", "message": "Use date_local OU (date_from_local/date_to_local), não ambos."}
+        with transacao(config) as conn, conn.cursor() as cur:
+            if date_local and (date_from_local or date_to_local):
+                return {"status": "error", "message": "Use date_local OU (date_from_local/date_to_local), não ambos."}
 
-        where_sql = "WHERE 1=1"
-        params: dict = {"limit": limit}
+            where_sql = "WHERE 1=1"
+            params: dict = {"limit": limit}
 
-        if text:
-            where_sql += (
-                " AND (e.title ILIKE %(text_like)s"
-                " OR e.location ILIKE %(text_like)s"
-                " OR e.notes ILIKE %(text_like)s"
-                " OR e.source_text ILIKE %(text_like)s)"
-            )
-            params["text_like"] = f"%{text}%"
+            if text:
+                where_sql += (
+                    " AND (e.title ILIKE %(text_like)s"
+                    " OR e.location ILIKE %(text_like)s"
+                    " OR e.notes ILIKE %(text_like)s"
+                    " OR e.source_text ILIKE %(text_like)s)"
+                )
+                params["text_like"] = f"%{text}%"
 
-        if date_local:
-            where_sql += (
-                " AND e.start_time >= (%(date_local)s::date AT TIME ZONE 'America/Sao_Paulo')"
-                " AND e.start_time <  ((%(date_local)s::date + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo')"
-            )
-            params["date_local"] = date_local
-        else:
-            if date_from_local:
-                where_sql += " AND e.start_time >= (%(date_from)s::date AT TIME ZONE 'America/Sao_Paulo')"
-                params["date_from"] = date_from_local
-            if date_to_local:
-                where_sql += " AND e.start_time < ((%(date_to)s::date + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo')"
-                params["date_to"] = date_to_local
+            if date_local:
+                where_sql += (
+                    " AND e.start_time >= (%(date_local)s::date AT TIME ZONE 'America/Sao_Paulo')"
+                    " AND e.start_time <  ((%(date_local)s::date + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo')"
+                )
+                params["date_local"] = date_local
+            else:
+                if date_from_local:
+                    where_sql += " AND e.start_time >= (%(date_from)s::date AT TIME ZONE 'America/Sao_Paulo')"
+                    params["date_from"] = date_from_local
+                if date_to_local:
+                    where_sql += " AND e.start_time < ((%(date_to)s::date + INTERVAL '1 day') AT TIME ZONE 'America/Sao_Paulo')"
+                    params["date_to"] = date_to_local
 
-        sql = f"""
-            SELECT
-              e.id,
-              e.title,
-              e.start_time,
-              e.end_time,
-              e.location,
-              e.notes,
-              e.source_text,
-              e.recorded_at
-            FROM events e
-            {where_sql}
-            ORDER BY e.start_time ASC
-            LIMIT %(limit)s;
-        """
-        cur.execute(sql, params)
-        rows = cur.fetchall()
+            sql = f"""
+                SELECT
+                  e.id,
+                  e.title,
+                  e.start_time,
+                  e.end_time,
+                  e.location,
+                  e.notes,
+                  e.source_text,
+                  e.recorded_at
+                FROM events e
+                {where_sql}
+                ORDER BY e.start_time ASC
+                LIMIT %(limit)s;
+            """
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
-        results: List[dict] = []
-        for r in rows:
-            results.append({
-                "id": r[0],
-                "title": r[1],
-                "start_time": str(r[2]),
-                "end_time": str(r[3]) if r[3] else None,
-                "location": r[4],
-                "notes": r[5],
-                "source_text": r[6],
-                "recorded_at": str(r[7]),
-            })
+            results: List[dict] = []
+            for r in rows:
+                results.append({
+                    "id": r[0],
+                    "title": r[1],
+                    "start_time": str(r[2]),
+                    "end_time": str(r[3]) if r[3] else None,
+                    "location": r[4],
+                    "notes": r[5],
+                    "source_text": r[6],
+                    "recorded_at": str(r[7]),
+                })
 
-        return {"status": "ok", "count": len(results), "results": results}
+            return {"status": "ok", "count": len(results), "results": results}
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
-    finally:
-        try:
-            cur.close()
-            conn.close()
-        except Exception:
-            pass
 
 
 # Exporta a lista de tools

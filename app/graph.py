@@ -13,6 +13,7 @@ from app.tools.faq import faq_retriever
 from app.tools.memoria import TOOLS_MEMORIA
 from app.tools.perfil import TOOLS_PERFIL
 from app.memory import salvar_mensagem
+from app.db import UnidadeDeTrabalho
 from app.juiz import no_juiz
 from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
 # Só salvar_mensagem entra aqui. iniciar_sessao() é chamada por ela mesma, e
@@ -95,6 +96,7 @@ class Estado(MessagesState):                                  # ID da sessão
     agentes_chamados:   Annotated[list[str], operator.add]  # acumula entre nós
     rota: str
     mapa_pii: dict
+    juiz_aprovado: bool                                     # veredito do juiz; decide commit ou rollback
 
 # ==============================================================================
 # NÓS
@@ -258,6 +260,7 @@ def executar_fluxo_assessor(
         "agentes_chamados":   [],
         "rota": "",
         "mapa_pii": {},
+        "juiz_aprovado": False,   # o checkpointer guarda o estado entre turnos: sem isto, o veredito do anterior vazaria
         "session_id": session_id,
     }
 
@@ -266,18 +269,27 @@ def executar_fluxo_assessor(
     turno_id = abrir_turno()
     status = "erro"
     rota = ""
+    # As escritas no Postgres e os efeitos externos (Google Calendar) do turno
+    # ficam pendentes nesta unidade até o juiz falar. Ver app/db.py.
+    uow = UnidadeDeTrabalho()
     try:
         # thread_id → memória CURTA (checkpointer, uma conversa).
         # user_id   → memória LONGA (buscar_historico, sessões anteriores do MESMO
         #             usuário). É o session_id que muda a cada "nova sessão"; o
         #             user_id é o identificador estável que faz a memória de longo
         #             prazo encontrar o passado.
+        # uow       → a transação do turno, entregue às tools pelo config.
         estado_final = fluxo_agentes.invoke(
             estado_inicial,
-            config={"configurable": {"thread_id": session_id, "user_id": user_id}},
+            config={"configurable": {"thread_id": session_id, "user_id": user_id, "uow": uow}},
         )
 
         resposta = estado_final["messages"][-1].content
+
+        # Aprovado → commit e depois os efeitos externos. Recusado, ou qualquer
+        # caminho que não passou pelo juiz → rollback. Fica antes de
+        # salvar_mensagem para o Mongo receber o texto que o usuário vai ver.
+        resposta = uow.finalizar(estado_final.get("juiz_aprovado") is True, resposta)
 
         # A resposta é gravada aqui, e não dentro de um nó, porque existem três
         # saídas diferentes do grafo — guardrail_saida, resposta direta do roteador
@@ -293,4 +305,5 @@ def executar_fluxo_assessor(
             "agentes_chamados": estado_final["agentes_chamados"],
         }
     finally:
+        uow.encerrar()
         fechar_turno(turno_id, session_id=session_id, rota=rota, status=status)

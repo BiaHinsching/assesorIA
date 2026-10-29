@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from langchain.tools import tool
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 from app.config import (
@@ -28,6 +29,7 @@ from app.config import (
     GOOGLE_CALENDAR_MCP_URL,
     GOOGLE_OAUTH_CREDENTIALS,
 )
+from app.db import uow_do_config
 
 ESCOPOS = [
     "https://www.googleapis.com/auth/calendar",
@@ -273,6 +275,20 @@ class AddGoogleEventArgs(BaseModel):
     description: Optional[str] = Field(default=None, description="Descrição / notas.")
 
 
+AVISO_GOOGLE_FALHOU = (
+    "Observação: o compromisso foi salvo na agenda, mas não consegui "
+    "sincronizá-lo com o Google Calendar agora."
+)
+
+
+def _iso_valido(valor: str) -> bool:
+    try:
+        datetime.fromisoformat(valor)
+        return True
+    except ValueError:
+        return False
+
+
 @tool("add_google_event", args_schema=AddGoogleEventArgs)
 def add_google_event(
     title: str,
@@ -280,12 +296,45 @@ def add_google_event(
     end_time: Optional[str] = None,
     location: Optional[str] = None,
     description: Optional[str] = None,
+    config: RunnableConfig = None,
 ) -> dict:
     """
     Cria o compromisso no Google Calendar da conta autenticada, via MCP oficial
     da Google (HTTP). NÃO grava no Postgres — isso é papel da tool add_event.
     Ao marcar um evento novo, chame as DUAS: primeiro add_event, depois esta.
+    Dentro de um turno do assistente o evento só é criado no Google depois que o
+    turno é aprovado; a tool devolve status "pendente_aprovacao".
     """
+    uow = uow_do_config(config)
+    if uow is None:
+        return _criar_evento_google(title, start_time, end_time, location, description)
+
+    # O Google não participa da transação do Postgres: se fosse chamado aqui, um
+    # turno recusado deixaria o evento criado. Então só se registra a intenção, e
+    # app/db.py a executa depois do commit. Como o resultado só aparece depois
+    # do veredito, os argumentos são validados já, para o modelo poder corrigir.
+    for nome, valor in (("start_time", start_time), ("end_time", end_time)):
+        if valor and not _iso_valido(valor):
+            return {"status": "error", "message": f"{nome} não é um ISO 8601 válido: {valor!r}"}
+    uow.adiar(
+        lambda: _criar_evento_google(title, start_time, end_time, location, description),
+        AVISO_GOOGLE_FALHOU,
+    )
+    return {
+        "status": "pendente_aprovacao",
+        "titulo": title,
+        "inicio": start_time,
+        "mensagem": "O evento será criado no Google Calendar depois que o turno for aprovado.",
+    }
+
+
+def _criar_evento_google(
+    title: str,
+    start_time: str,
+    end_time: Optional[str],
+    location: Optional[str],
+    description: Optional[str],
+) -> dict:
     fim = end_time or _fim_padrao(start_time)
     payload: dict[str, Any] = {
         "summary": title,
