@@ -72,7 +72,7 @@ Log: [juiz] erro http 401
 Resultado: o juiz recusou e continuam 0 eventos com QA29a-8 no banco. Como indício de que o INSERT chegou a rodar e foi desfeito, o contador (sequence) da tabela events está em 4 enquanto o maior id existente é 3: um id foi consumido por um INSERT que sofreu rollback.
 
 
-## 3. Efeito nas métricas de SRE
+## Efeito nas métricas de SRE
 
 **Como medimos.** Subimos duas instâncias da API, uma com o código original (commit c06e81f) e outra com o código novo, cada uma ligada a um banco Postgres descartável idêntico. Mandamos os mesmos pedidos para as duas, alternando entre elas, em duas execuções de 10 pedidos cada (5 pedidos por rodada: gasto, alteração do gasto, evento na agenda, consulta e gasto mais saldo), o que dá **20 turnos por versão**. Os números vêm do `/monitor` de cada instância, juntando as duas execuções. Com 20 amostras, o p95 é a 19ª em ordem crescente, isto é, a segunda pior, então um único turno lento pesa muito. Por isso mostramos também a mediana.
 
